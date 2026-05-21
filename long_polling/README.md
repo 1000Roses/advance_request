@@ -77,3 +77,114 @@ go run long_polling.go
 #   GET  /poll     - Client long-polling
 #   POST /publish  - Server push notification (test)
 ```
+
+---
+
+## 🚀 Load Test / Bắn dữ liệu
+
+### Cách 1: Apache Bench (ab)
+
+```bash
+# Cài đặt nếu chưa có: apt install apache2-utils
+
+# Test 100 request, 10 concurrent
+ab -n 100 -c 10 http://localhost:8080/poll
+
+# Test 1000 request, 50 concurrent (để xem performance)
+ab -n 1000 -c 50 http://localhost:8080/poll
+```
+
+### Cách 2: WRK (Khuyên dùng)
+
+```bash
+# Cài đặt: apt install wrk
+
+# Test với 100 threads, 1000 connections trong 30s
+wrk -t12 -c100 -d30s http://localhost:8080/poll
+
+# Test với custom script (xem wrk/scripts/poll.lua)
+wrk -t4 -c200 -d30s -s poll.lua http://localhost:8080/poll
+```
+
+### Cách 3: Siege
+
+```bash
+# Cài đặt: apt install siege
+
+# Simulate 50 users, 30 seconds
+siege -c50 -t30s http://localhost:8080/poll
+```
+
+### Cách 4: Go bắn nhiều clients
+
+```bash
+# Chạy file load_test.go để bắn nhiều concurrent clients
+go run load_test.go -clients=100 -duration=30s
+```
+
+File `load_test.go` đã có sẵn — bắn nhiều long-polling clients đồng thời.
+
+### Cách 5: Auto-broadcast
+
+```bash
+# Broadcast liên tục mỗi 0.5s để simulate real data
+while true; do
+  curl -s -X POST http://localhost:8080/publish -d "message=Test-$(date +%s)"
+  sleep 0.5
+done
+
+# Hoặc nhiều messages cùng lúc
+for i in {1..100}; do
+  curl -s -X POST http://localhost:8080/publish -d "message=Burst-$i" &
+done
+wait
+```
+
+### Cách 6: Vegeta (Go load test tool)
+
+```bash
+# Cài đặt
+go install github.com/tsenart/vegeta@latest
+
+# Attack 50 requests/second trong 30s
+echo "GET http://localhost:8080/poll" | vegeta attack -rate=50 -duration=30s | vegeta report
+
+# Encode kết quả
+echo "GET http://localhost:8080/poll" | vegeta attack -rate=100 -duration=30s | vegeta encode | jq .
+```
+
+---
+
+## 📊 Metrics cần theo dõi
+
+- **Latency**: Response time trung bình, p95, p99
+- **Throughput**: Requests/second
+- **Error rate**: Số request thất bại
+- **Active connections**: Số clients đang polling
+- **Timeout rate**: Bao nhiêu request bị timeout
+
+```bash
+# Theo dõi real-time
+watch -n1 'curl -s http://localhost:8080/clients | jq .'
+```
+
+---
+
+## 🧪 Full Load Test Scenario
+
+```bash
+# Terminal 1: Chạy server
+go run long_polling.go
+
+# Terminal 2: Bắn broadcast liên tục
+while true; do
+  curl -s -X POST http://localhost:8080/publish -d "message=LoadTest-$(date +%s)"
+  sleep 0.1
+done &
+
+# Terminal 3: Chạy load test với wrk
+wrk -t10 -c200 -d60s http://localhost:8080/poll
+
+# Terminal 4: Theo dõi clients
+watch -n1 'curl -s http://localhost:8080/clients'
+```
