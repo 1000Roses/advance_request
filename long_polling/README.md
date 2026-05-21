@@ -80,111 +80,70 @@ go run long_polling.go
 
 ---
 
-## 🚀 Load Test / Bắn dữ liệu
+## 🚀 Load Test
 
-### Cách 1: Apache Bench (ab)
-
-```bash
-# Cài đặt nếu chưa có: apt install apache2-utils
-
-# Test 100 request, 10 concurrent
-ab -n 100 -c 10 http://localhost:8080/poll
-
-# Test 1000 request, 50 concurrent (để xem performance)
-ab -n 1000 -c 50 http://localhost:8080/poll
-```
-
-### Cách 2: WRK (Khuyên dùng)
+### Go load_test.go (Khuyên dùng)
 
 ```bash
-# Cài đặt: apt install wrk
+# 1. Chạy server
+./long_polling &
 
-# Test với 100 threads, 1000 connections trong 30s
-wrk -t12 -c100 -d30s http://localhost:8080/poll
-
-# Test với custom script (xem wrk/scripts/poll.lua)
-wrk -t4 -c200 -d30s -s poll.lua http://localhost:8080/poll
-```
-
-### Cách 3: Siege
-
-```bash
-# Cài đặt: apt install siege
-
-# Simulate 50 users, 30 seconds
-siege -c50 -t30s http://localhost:8080/poll
-```
-
-### Cách 4: Go bắn nhiều clients
-
-```bash
-# Chạy file load_test.go để bắn nhiều concurrent clients
+# 2. Chạy load test
 go run load_test.go -clients=100 -duration=30s
+
+# Kết quả sẽ show:
+# - Total requests
+# - Success / Timeout / Error counts
+# - RPS (requests per second)
+# - Avg latency
 ```
 
-File `load_test.go` đã có sẵn — bắn nhiều long-polling clients đồng thời.
+**Flags:**
+- `-clients` — Số concurrent clients (mặc định: 50)
+- `-duration` — Thời gian test (mặc định: 30s)
+- `-broadcast-interval` — Khoảng cách broadcast tự động (mặc định: 500ms)
 
-### Cách 5: Auto-broadcast
+### Broadcast thủ công
 
 ```bash
-# Broadcast liên tục mỗi 0.5s để simulate real data
+# Broadcast 1 message
+curl -X POST http://localhost:8080/publish -d "message=Hello"
+
+# Broadcast liên tục (0.5s/cái)
 while true; do
   curl -s -X POST http://localhost:8080/publish -d "message=Test-$(date +%s)"
   sleep 0.5
 done
-
-# Hoặc nhiều messages cùng lúc
-for i in {1..100}; do
-  curl -s -X POST http://localhost:8080/publish -d "message=Burst-$i" &
-done
-wait
 ```
 
-### Cách 6: Vegeta (Go load test tool)
+---
+
+## 🧪 Full Test Scenario
 
 ```bash
-# Cài đặt
-go install github.com/tsenart/vegeta@latest
+# Terminal 1: Chạy server
+go run long_polling.go
 
-# Attack 50 requests/second trong 30s
-echo "GET http://localhost:8080/poll" | vegeta attack -rate=50 -duration=30s | vegeta report
+# Terminal 2: Chạy load test
+go run load_test.go -clients=100 -duration=60s
 
-# Encode kết quả
-echo "GET http://localhost:8080/poll" | vegeta attack -rate=100 -duration=30s | vegeta encode | jq .
+# Terminal 3: (Optional) Broadcast thêm data
+while true; do
+  curl -s -X POST http://localhost:8080/publish -d "message=LoadTest-$(date +%s)" &
+  sleep 0.2
+done
 ```
 
 ---
 
 ## 📊 Metrics cần theo dõi
 
-- **Latency**: Response time trung bình, p95, p99
-- **Throughput**: Requests/second
-- **Error rate**: Số request thất bại
-- **Active connections**: Số clients đang polling
-- **Timeout rate**: Bao nhiêu request bị timeout
+- **RPS** — Requests per second (throughput)
+- **Latency** — Response time trung bình
+- **Error rate** — % request thất bại
+- **Active clients** — Số clients đang polling
 
 ```bash
-# Theo dõi real-time
-watch -n1 'curl -s http://localhost:8080/clients | jq .'
-```
-
----
-
-## 🧪 Full Load Test Scenario
-
-```bash
-# Terminal 1: Chạy server
-go run long_polling.go
-
-# Terminal 2: Bắn broadcast liên tục
-while true; do
-  curl -s -X POST http://localhost:8080/publish -d "message=LoadTest-$(date +%s)"
-  sleep 0.1
-done &
-
-# Terminal 3: Chạy load test với wrk
-wrk -t10 -c200 -d60s http://localhost:8080/poll
-
-# Terminal 4: Theo dõi clients
-watch -n1 'curl -s http://localhost:8080/clients'
+# Xem đang có bao nhiêu clients đang chờ
+curl http://localhost:8080/clients
 ```

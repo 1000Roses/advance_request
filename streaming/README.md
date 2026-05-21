@@ -104,131 +104,68 @@ go run streaming.go
 
 ---
 
-## 🚀 Load Test / Bắn dữ liệu
+## 🚀 Load Test
 
-### Cách 1: Apache Bench (ab)
-
-```bash
-# Cài đặt: apt install apache2-utils
-
-# Test với nhiều concurrent connections
-ab -n 1000 -c 50 http://localhost:8080/events
-
-# Note: ab sẽ timeout hoặc receive data liên tục
-```
-
-### Cách 2: WRK với Lua script
+### Go load_test.go (Khuyên dùng)
 
 ```bash
-# Cài đặt: apt install wrk
+# 1. Chạy server
+./streaming &
 
-# Tạo script để count events nhận được
-wrk -t10 -c100 -d30s http://localhost:8080/events
-```
-
-### Cách 3: Go load test script
-
-```bash
-# Chạy file load_test.go
+# 2. Chạy load test
 go run load_test.go -clients=100 -duration=30s
+
+# Kết quả sẽ show:
+# - Connected clients
+# - Total events received
+# - Events/second (throughput)
 ```
 
-File `load_test.go` đã có sẵn — bắn nhiều concurrent SSE clients đồng thời.
+**Flags:**
+- `-clients` — Số concurrent SSE connections (mặc định: 50)
+- `-duration` — Thời gian test (mặc định: 30s)
+- `-broadcast-interval` — Khoảng cách broadcast tự động (mặc định: 500ms)
 
-### Cách 4: Auto-broadcast
+### Broadcast thủ công
 
 ```bash
-# Broadcast liên tục để simulate real data
+# Broadcast 1 message
+curl -X POST "http://localhost:8080/broadcast?msg=Hello"
+
+# Broadcast liên tục
 while true; do
-  curl -s -X POST "http://localhost:8080/broadcast?msg=LoadTest-$(date +%s)" &
+  curl -s -X POST "http://localhost:8080/broadcast?msg=Test-$(date +%s)" &
   sleep 0.5
 done
+```
 
-# Burst test
-for i in {1..100}; do
-  curl -s -X POST "http://localhost:8080/broadcast?msg=Burst-$i" &
+---
+
+## 🧪 Full Test Scenario
+
+```bash
+# Terminal 1: Chạy server
+go run streaming.go
+
+# Terminal 2: Chạy load test
+go run load_test.go -clients=100 -duration=60s
+
+# Terminal 3: (Optional) Broadcast thêm data
+while true; do
+  curl -s -X POST "http://localhost:8080/broadcast?msg=LoadTest-$(date +%s)" &
+  sleep 0.2
 done
-wait
-```
-
-### Cách 5: Vegeta
-
-```bash
-go install github.com/tsenart/vegeta@latest
-
-# SSE là persistent connection nên dùng vegeta để test throughput
-echo "GET http://localhost:8080/events" | vegeta attack -rate=50 -duration=30s | vegeta report
-```
-
-### Cách 6: Curl nhiều clients
-
-```bash
-# Mở nhiều terminal hoặc background
-for i in {1..50}; do
-  curl -N http://localhost:8080/events &
-done
-sleep 30
-killall curl
-```
-
-### Cách 7: Hey (HTTP load test)
-
-```bash
-npm install -g hey
-
-# Test persistent connections
-hey -n 1000 -c 50 -z 30s http://localhost:8080/events
 ```
 
 ---
 
 ## 📊 Metrics cần theo dõi
 
-- **Active connections**: Số clients đang listen
-- **Events/second**: Bao nhiêu events được gửi
-- **Broadcast success rate**: Bao nhiêu % clients nhận được broadcast
-- **Connection duration**: Connections sống được bao lâu
+- **Active connections** — Số clients đang listen
+- **Events/second** — Bao nhiêu events được gửi
+- **Broadcast success rate** — % clients nhận được broadcast
 
 ```bash
-# Theo dõi active SSE clients real-time
-watch -n1 'curl -s http://localhost:8080/clients | jq .'
-```
-
----
-
-## 🧪 Full Load Test Scenario
-
-```bash
-# Terminal 1: Chạy server
-go run streaming.go
-
-# Terminal 2: Bắn broadcast liên tục (100 msgs/s)
-for i in {1..1000}; do
-  curl -s -X POST "http://localhost:8080/broadcast?msg=LoadTest-$i" &
-  [ $((i % 10)) -eq 0 ] && sleep 0.1
-done
-
-# Terminal 3: Chạy load test với 200 concurrent SSE clients
-go run load_test.go -clients=200 -duration=60s
-
-# Terminal 4: Theo dõi clients
-watch -n1 'curl -s http://localhost:8080/clients'
-```
-
----
-
-## 🧪 Stress Test - Đẩy đến giới hạn
-
-```bash
-# Đẩy 500 concurrent SSE connections
-go run load_test.go -clients=500 -duration=120s
-
-# Kết hợp broadcast burst
-while true; do
-  for i in {1..50}; do
-    curl -s -X POST "http://localhost:8080/broadcast?msg=Burst-$i" &
-  done
-  wait
-  sleep 0.5
-done
+# Xem đang có bao nhiêu clients kết nối
+curl http://localhost:8080/clients
 ```
