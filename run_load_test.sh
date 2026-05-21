@@ -59,7 +59,7 @@ kill_port() {
     if is_port_in_use; then
         log_info "Killing existing process on port $PORT..."
         lsof -ti :$PORT | xargs kill -9 2>/dev/null || true
-        sleep 1
+        sleep 2
     fi
 }
 
@@ -81,7 +81,7 @@ wait_for_server() {
 run_load_test() {
     local tech=$1
     local binary=$2
-    local load_test_file=$3
+    local loadtest_file=$3
     
     echo ""
     log_info "=========================================="
@@ -114,7 +114,7 @@ run_load_test() {
         log_info "--- Testing $tech with $CLIENTS clients ---"
         
         # Run load test and capture output
-        OUTPUT=$(go run $load_test_file \
+        OUTPUT=$(go run $loadtest_file \
             -clients=$CLIENTS \
             -duration=$DURATION \
             -broadcast-interval=$BROADCAST_INTERVAL 2>&1)
@@ -150,7 +150,7 @@ run_load_test() {
     # Cleanup
     log_info "Stopping server..."
     kill $SERVER_PID 2>/dev/null || true
-    sleep 1
+    sleep 2
     
     log_success "Completed $tech tests"
 }
@@ -185,9 +185,9 @@ EOF
 echo "" >> "$RESULTS_FILE"
 
 # Chạy test cho từng technique
-run_load_test "long_polling" "long_polling" "load_test.go"
-run_load_test "websocket" "websocket" "load_test.go"
-run_load_test "streaming" "streaming" "load_test.go"
+run_load_test "long_polling" "long_polling_server" "loadtest.go"
+run_load_test "websocket" "websocket_server" "loadtest.go"
+run_load_test "streaming" "streaming_server" "loadtest.go"
 
 # Generate summary
 echo "" >> "$RESULTS_FILE"
